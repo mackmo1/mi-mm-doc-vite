@@ -1,10 +1,24 @@
+import { useEffect } from 'react';
 import { useUiStore } from './store/uiStore';
+import { useBranchStore } from './store/branchStore';
 import LeftSide from './components/LeftSide';
 import Editor from './components/Editor';
+import './scss/main.scss';
+
+console.log('App.jsx loaded');
 
 function App() {
+  console.log('App component rendering');
   const { isEditor, openEditor } = useUiStore();
+  const { fetchAllBranches } = useBranchStore();
   const title = "Welcome to kh best documentation side :)";
+
+  // Fetch all branches on mount
+  useEffect(() => {
+    fetchAllBranches();
+  }, [fetchAllBranches]);
+
+  console.log('App isEditor:', isEditor);
 
   return (
     <div className="app">
