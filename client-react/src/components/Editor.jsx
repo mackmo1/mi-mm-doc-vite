@@ -4,6 +4,9 @@ import { useBranchStore } from '../store/branchStore';
 
 // Note: Trumbowyg is imported in main.jsx to ensure jQuery is available globally first
 
+// Import Trumbowyg icons SVG - Vite will handle the path
+import trumbowygIconsUrl from 'trumbowyg/dist/ui/icons.svg';
+
 const DEFAULT_CONTENT = '<h1 class="branch-name" id="branch-name"></h1>';
 
 /**
@@ -16,6 +19,7 @@ function Editor() {
 
   // Trumbowyg configuration
   const trumbowygConfig = {
+    svgPath: trumbowygIconsUrl,  // Use Vite-resolved path to icons
     autogrow: true,
     removeformatPasted: true,
     imageWidthModalEdit: true,

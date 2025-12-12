@@ -161,6 +161,106 @@ describe('branchStore', () => {
       expect(state.branches1[0].isShow).toBe(false);
       expect(state.branches1[0].isAdd).toBe(false);
     });
+
+    it('should handle fetch error gracefully', async () => {
+      api.get.mockRejectedValue(new Error('Network error'));
+
+      const { fetchBranches } = useBranchStore.getState();
+      await fetchBranches(1);
+
+      const state = useBranchStore.getState();
+      expect(state.error).toBe('Network error');
+    });
+
+    it('should add a new branch', async () => {
+      api.post.mockResolvedValue({
+        data: { id: 10, title: 'New Branch', content: '<p>Content</p>' }
+      });
+
+      const { addBranch } = useBranchStore.getState();
+      const result = await addBranch(1, { title: 'New Branch', content: '<p>Content</p>' });
+
+      expect(api.post).toHaveBeenCalledWith('/branches1', { title: 'New Branch', content: '<p>Content</p>' });
+      expect(result).toEqual({ id: 10, title: 'New Branch', content: '<p>Content</p>' });
+
+      const state = useBranchStore.getState();
+      expect(state.branches1).toHaveLength(1);
+      expect(state.branches1[0].isShow).toBe(false);
+      expect(state.branches1[0].isAdd).toBe(false);
+    });
+
+    it('should update an existing branch', async () => {
+      useBranchStore.setState({
+        branches2: [{ id: 5, title: 'Old Title', content: '<p>Old</p>', isShow: true, isAdd: false }]
+      });
+
+      api.patch.mockResolvedValue({
+        data: { id: 5, title: 'Updated Title', content: '<p>New</p>' }
+      });
+
+      const { updateBranch } = useBranchStore.getState();
+      await updateBranch(2, { id: 5, title: 'Updated Title', content: '<p>New</p>' });
+
+      const state = useBranchStore.getState();
+      expect(state.branches2[0].title).toBe('Updated Title');
+      expect(state.branches2[0].isShow).toBe(true); // preserved
+    });
+
+    it('should delete a branch', async () => {
+      useBranchStore.setState({
+        branches3: [
+          { id: 1, title: 'Keep' },
+          { id: 2, title: 'Delete' }
+        ]
+      });
+
+      api.delete.mockResolvedValue({});
+
+      const { deleteBranch } = useBranchStore.getState();
+      const result = await deleteBranch(3, 2);
+
+      expect(result).toBe(true);
+      const state = useBranchStore.getState();
+      expect(state.branches3).toHaveLength(1);
+      expect(state.branches3[0].id).toBe(1);
+    });
+
+    it('should fetch a single branch by id', async () => {
+      api.get.mockResolvedValue({
+        data: { id: 5, title: 'Single Branch', content: '<p>Content</p>' }
+      });
+
+      const { fetchBranch } = useBranchStore.getState();
+      const result = await fetchBranch(2, 5);
+
+      expect(api.get).toHaveBeenCalledWith('/branches2/5');
+      expect(result).toEqual({ id: 5, title: 'Single Branch', content: '<p>Content</p>' });
+    });
+
+    it('should fetch all branches at once', async () => {
+      api.get.mockResolvedValue({ data: [] });
+
+      const { fetchAllBranches } = useBranchStore.getState();
+      await fetchAllBranches();
+
+      expect(api.get).toHaveBeenCalledTimes(5);
+      expect(api.get).toHaveBeenCalledWith('/branches1');
+      expect(api.get).toHaveBeenCalledWith('/branches2');
+      expect(api.get).toHaveBeenCalledWith('/branches3');
+      expect(api.get).toHaveBeenCalledWith('/branches4');
+      expect(api.get).toHaveBeenCalledWith('/branches5');
+    });
+  });
+
+  describe('Error handling', () => {
+    it('should clear error', () => {
+      useBranchStore.setState({ error: 'Some error' });
+
+      const { clearError } = useBranchStore.getState();
+      clearError();
+
+      expect(useBranchStore.getState().error).toBe(null);
+    });
   });
 });
 
