@@ -9,7 +9,7 @@ const { Pool } = pkg;
 const dbConfig = {
     host: process.env.DB_HOST || 'localhost',
     user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD,
+    password: process.env.DB_PASSWORD || 'postgres',
     database: process.env.DB_DATABASE || 'kh_doc',
     port: parseInt(process.env.DB_PORT) || 5432,
     max: 20, // Maximum number of clients in the pool
