@@ -1,14 +1,24 @@
+/**
+ * API Service
+ *
+ * NOTE: This project now uses Supabase directly for all data operations.
+ * This file is kept for backwards compatibility and potential future
+ * external API integrations.
+ *
+ * For Supabase operations, import from '../lib/supabase' instead.
+ */
+
 import axios from 'axios';
 
+// Create axios instance for any external API calls (not Supabase)
 const api = axios.create({
-  baseURL: '/api',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json'
   }
 });
 
-// Request interceptor for logging (development)
+// Request interceptor for logging (development only)
 api.interceptors.request.use(
   (config) => {
     if (import.meta.env.DEV) {

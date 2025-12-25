@@ -1,28 +1,73 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useUiStore } from './store/uiStore';
 import { useBranchStore } from './store/branchStore';
+import { useAuthStore } from './store/authStore';
 import LeftSide from './components/LeftSide';
 import Editor from './components/Editor';
+import Login from './components/Login';
+import Register from './components/Register';
 import './scss/main.scss';
 
-console.log('App.jsx loaded');
-
 function App() {
-  console.log('App component rendering');
   const { isEditor, openEditor } = useUiStore();
-  const { fetchAllBranches } = useBranchStore();
+  const { fetchAllBranches, clearAllBranches } = useBranchStore();
+  const { isAuthenticated, user, logout, initialize, initialized } = useAuthStore();
+  const [authView, setAuthView] = useState('login'); // 'login' or 'register'
   const title = "Welcome to kh best documentation side :)";
 
-  // Fetch all branches on mount
+  // Initialize auth on mount (Supabase session check)
   useEffect(() => {
-    fetchAllBranches();
-  }, [fetchAllBranches]);
+    initialize();
+  }, [initialize]);
 
-  console.log('App isEditor:', isEditor);
+  // Fetch all branches when authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchAllBranches();
+    }
+  }, [isAuthenticated, fetchAllBranches]);
 
+  // Handle logout
+  const handleLogout = async () => {
+    await logout();
+    clearAllBranches();
+  };
+
+  // Show loading while initializing auth
+  if (!initialized) {
+    return (
+      <div className="auth-container">
+        <div className="auth-card" style={{ textAlign: 'center' }}>
+          <i className="fa fa-spinner fa-spin" style={{ fontSize: '32px', color: '#667eea' }}></i>
+          <p style={{ marginTop: '16px', color: '#666' }}>Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show auth screens if not authenticated
+  if (!isAuthenticated) {
+    return authView === 'login' ? (
+      <Login onSwitchToRegister={() => setAuthView('register')} />
+    ) : (
+      <Register onSwitchToLogin={() => setAuthView('login')} />
+    );
+  }
+
+  // Main authenticated app
   return (
     <div className="app">
-      <h1 className="header-title">{title}</h1>
+      <div className="app-header">
+        <h1 className="header-title">{title}</h1>
+        <div className="user-info">
+          <span className="username">
+            <i className="fa fa-user"></i> {user?.username}
+          </span>
+          <button className="logout-btn" onClick={handleLogout}>
+            <i className="fa fa-sign-out"></i> Logout
+          </button>
+        </div>
+      </div>
       {isEditor ? (
         <div className="template">
           <LeftSide />

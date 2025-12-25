@@ -5,15 +5,15 @@ import path from 'path'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+
+  // Base path for GitHub Pages deployment
+  // Set VITE_BASE_PATH in .env for your repo name, e.g., '/my-repo-name/'
+  // For custom domain or root deployment, leave empty or set to '/'
+  base: process.env.VITE_BASE_PATH || '/',
+
   server: {
-    port: 3000,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:5000',
-        changeOrigin: true,
-        secure: false
-      }
-    }
+    port: 3000
+    // Note: Proxy removed - now using Supabase directly
   },
   resolve: {
     alias: {
@@ -36,7 +36,8 @@ export default defineConfig({
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom'],
-          editor: ['jquery', 'trumbowyg']
+          editor: ['jquery', 'trumbowyg'],
+          supabase: ['@supabase/supabase-js']
         }
       }
     }

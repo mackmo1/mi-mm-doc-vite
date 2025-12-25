@@ -5,11 +5,8 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 
 // Import routes
-import branch1Routes from "./routes/branches1.js";
-import branch2Routes from "./routes/branches2.js";
-import branch3Routes from "./routes/branches3.js";
-import branch4Routes from "./routes/branches4.js";
-import branch5Routes from "./routes/branches5.js";
+import authRoutes from "./routes/auth.js";
+import branchRoutes from "./routes/branches.js";
 
 // Import database initialization
 import initializeDatabase from "./database/init.js";
@@ -63,14 +60,20 @@ server.get('/health', (req, res) => {
 // API documentation endpoint
 server.get('/api', (req, res) => {
     res.json({
-        message: 'Kh-doc API v2.0 - PostgreSQL Edition',
-        endpoints: {
-            branches1: '/api/branches1',
-            branches2: '/api/branches2',
-            branches3: '/api/branches3',
-            branches4: '/api/branches4',
-            branches5: '/api/branches5'
+        message: 'Kh-doc API v2.0 - Multi-User PostgreSQL Edition',
+        auth: {
+            register: 'POST /api/auth/register',
+            login: 'POST /api/auth/login',
+            me: 'GET /api/auth/me'
         },
+        branches: {
+            list: 'GET /api/branches/:level (1-5)',
+            get: 'GET /api/branches/:level/:id',
+            create: 'POST /api/branches/:level',
+            update: 'PATCH /api/branches/:level/:id',
+            delete: 'DELETE /api/branches/:level/:id'
+        },
+        note: 'All branch endpoints require authentication',
         methods: ['GET', 'POST', 'PATCH', 'DELETE'],
         health: '/health'
     });
@@ -81,24 +84,25 @@ server.get('/', (req, res) => {
     res.send(`
         <div style="text-align: center; font-family: Arial, sans-serif; padding: 50px;">
             <h1 style="color: #333;">Welcome to Kh-doc API v2.0</h1>
-            <p style="color: #666;">PostgreSQL-powered documentation API</p>
+            <p style="color: #666;">Multi-User PostgreSQL-powered documentation API</p>
             <div style="margin: 20px 0;">
                 <a href="/health" style="color: #007bff; margin: 0 10px;">Health Check</a>
                 <a href="/api" style="color: #007bff; margin: 0 10px;">API Info</a>
             </div>
             <div style="background: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0;">
-                <h3>Available Endpoints:</h3>
+                <h3>Authentication:</h3>
                 <ul style="list-style: none; padding: 0;">
-                    <li><code>GET/POST /api/branches1</code></li>
-                    <li><code>GET/PATCH/DELETE /api/branches1/:id</code></li>
-                    <li><code>GET/POST /api/branches2</code></li>
-                    <li><code>GET/PATCH/DELETE /api/branches2/:id</code></li>
-                    <li><code>GET/POST /api/branches3</code></li>
-                    <li><code>GET/PATCH/DELETE /api/branches3/:id</code></li>
-                    <li><code>GET/POST /api/branches4</code></li>
-                    <li><code>GET/PATCH/DELETE /api/branches4/:id</code></li>
-                    <li><code>GET/POST /api/branches5</code></li>
-                    <li><code>GET/PATCH/DELETE /api/branches5/:id</code></li>
+                    <li><code>POST /api/auth/register</code> - Register new user</li>
+                    <li><code>POST /api/auth/login</code> - Login</li>
+                    <li><code>GET /api/auth/me</code> - Get current user</li>
+                </ul>
+                <h3>Branch Endpoints (require auth):</h3>
+                <ul style="list-style: none; padding: 0;">
+                    <li><code>GET /api/branches/:level</code> - List branches (level 1-5)</li>
+                    <li><code>GET /api/branches/:level/:id</code> - Get branch</li>
+                    <li><code>POST /api/branches/:level</code> - Create branch</li>
+                    <li><code>PATCH /api/branches/:level/:id</code> - Update branch</li>
+                    <li><code>DELETE /api/branches/:level/:id</code> - Delete branch</li>
                 </ul>
             </div>
         </div>
@@ -106,11 +110,8 @@ server.get('/', (req, res) => {
 });
 
 // API routes
-server.use("/api/branches1", branch1Routes);
-server.use("/api/branches2", branch2Routes);
-server.use("/api/branches3", branch3Routes);
-server.use("/api/branches4", branch4Routes);
-server.use("/api/branches5", branch5Routes);
+server.use("/api/auth", authRoutes);
+server.use("/api/branches", branchRoutes);
 
 // 404 handler
 server.use('*', (req, res) => {
@@ -119,11 +120,11 @@ server.use('*', (req, res) => {
         path: req.originalUrl,
         method: req.method,
         availableRoutes: [
-            '/api/branches1',
-            '/api/branches2', 
-            '/api/branches3',
-            '/api/branches4',
-            '/api/branches5',
+            '/api/auth/register',
+            '/api/auth/login',
+            '/api/auth/me',
+            '/api/branches/:level (1-5)',
+            '/api/branches/:level/:id',
             '/health'
         ]
     });
@@ -144,12 +145,13 @@ server.listen(port, () => {
     console.log(`📍 Health check: http://localhost:${port}/health`);
     console.log(`🌐 API base URL: http://localhost:${port}/api`);
     console.log(`📚 API documentation: http://localhost:${port}/api`);
-    console.log(`🎯 Available endpoints:`);
-    console.log(`   - GET/POST http://localhost:${port}/api/branches1`);
-    console.log(`   - GET/POST http://localhost:${port}/api/branches2`);
-    console.log(`   - GET/POST http://localhost:${port}/api/branches3`);
-    console.log(`   - GET/POST http://localhost:${port}/api/branches4`);
-    console.log(`   - GET/POST http://localhost:${port}/api/branches5`);
+    console.log(`🔐 Auth endpoints:`);
+    console.log(`   - POST /api/auth/register`);
+    console.log(`   - POST /api/auth/login`);
+    console.log(`   - GET /api/auth/me`);
+    console.log(`📝 Branch endpoints (require auth):`);
+    console.log(`   - GET/POST /api/branches/:level`);
+    console.log(`   - GET/PATCH/DELETE /api/branches/:level/:id`);
 });
 
 export default server;

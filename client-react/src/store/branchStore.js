@@ -1,5 +1,12 @@
 import { create } from 'zustand';
-import api from '../services/api';
+import { supabase } from '../lib/supabase';
+
+/**
+ * Get the table name for a branch level
+ * @param {number} level - Branch level (1-5)
+ * @returns {string} Table name
+ */
+const getTableName = (level) => `branches${level}`;
 
 export const useBranchStore = create((set, get) => ({
   // State for all 5 branch levels
@@ -16,16 +23,23 @@ export const useBranchStore = create((set, get) => ({
   // Fetch all branches for a specific level
   fetchBranches: async (level) => {
     try {
-      const res = await api.get(`/branches${level}`);
+      const tableName = getTableName(level);
+      const { data, error } = await supabase
+        .from(tableName)
+        .select('*')
+        .order('id', { ascending: false });
+
+      if (error) throw error;
+
       // Initialize isShow and isAdd properties for each branch
-      const branches = (res.data || []).map(b => ({
+      const branches = (data || []).map(b => ({
         ...b,
-        isShow: b.isShow ?? false,
-        isAdd: b.isAdd ?? false
+        isShow: b.is_show ?? false,
+        isAdd: b.is_add ?? false
       }));
       set({ [`branches${level}`]: branches });
     } catch (err) {
-      console.error(`Error fetching branches${level}:`, err);
+      console.error(`Error fetching branches level ${level}:`, err);
       set({ error: err.message });
     }
   },
@@ -33,10 +47,17 @@ export const useBranchStore = create((set, get) => ({
   // Fetch a single branch by level and id
   fetchBranch: async (level, id) => {
     try {
-      const res = await api.get(`/branches${level}/${id}`);
-      return res.data;
+      const tableName = getTableName(level);
+      const { data, error } = await supabase
+        .from(tableName)
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+      return data;
     } catch (err) {
-      console.error(`Error fetching branch${level}/${id}:`, err);
+      console.error(`Error fetching branch level ${level} id ${id}:`, err);
       set({ error: err.message });
       return null;
     }
@@ -46,16 +67,34 @@ export const useBranchStore = create((set, get) => ({
   addBranch: async (level, branch) => {
     try {
       set({ loading: true });
-      const res = await api.post(`/branches${level}`, branch);
+      const tableName = getTableName(level);
+
+      // Map frontend field names to database column names
+      const insertData = {
+        branch_id: branch.branch_id || null,
+        title: branch.title,
+        content: branch.content,
+        is_show: branch.isShow || false,
+        is_add: branch.isAdd || false
+      };
+
+      const { data, error } = await supabase
+        .from(tableName)
+        .insert(insertData)
+        .select()
+        .single();
+
+      if (error) throw error;
+
       const key = `branches${level}`;
-      const newBranch = { ...res.data, isShow: false, isAdd: false };
+      const newBranch = { ...data, isShow: false, isAdd: false };
       set((state) => ({
         [key]: [...state[key], newBranch],
         loading: false
       }));
-      return res.data;
+      return data;
     } catch (err) {
-      console.error(`Error adding branch${level}:`, err);
+      console.error(`Error adding branch level ${level}:`, err);
       set({ error: err.message, loading: false });
       return null;
     }
@@ -65,15 +104,37 @@ export const useBranchStore = create((set, get) => ({
   updateBranch: async (level, branch) => {
     try {
       set({ loading: true });
-      const res = await api.patch(`/branches${level}/${branch.id}`, branch);
+      const tableName = getTableName(level);
+
+      // Map frontend field names to database column names
+      const updateData = {
+        title: branch.title,
+        content: branch.content,
+        updated_at: new Date().toISOString()
+      };
+
+      // Only include branch_id if it exists
+      if (branch.branch_id !== undefined) {
+        updateData.branch_id = branch.branch_id;
+      }
+
+      const { data, error } = await supabase
+        .from(tableName)
+        .update(updateData)
+        .eq('id', branch.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
       const key = `branches${level}`;
       set((state) => ({
-        [key]: state[key].map((b) => (b.id === branch.id ? { ...res.data, isShow: b.isShow, isAdd: b.isAdd } : b)),
+        [key]: state[key].map((b) => (b.id === branch.id ? { ...data, isShow: b.isShow, isAdd: b.isAdd } : b)),
         loading: false
       }));
-      return res.data;
+      return data;
     } catch (err) {
-      console.error(`Error updating branch${level}:`, err);
+      console.error(`Error updating branch level ${level}:`, err);
       set({ error: err.message, loading: false });
       return null;
     }
@@ -83,7 +144,15 @@ export const useBranchStore = create((set, get) => ({
   deleteBranch: async (level, id) => {
     try {
       set({ loading: true });
-      await api.delete(`/branches${level}/${id}`);
+      const tableName = getTableName(level);
+
+      const { error } = await supabase
+        .from(tableName)
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
       const key = `branches${level}`;
       set((state) => ({
         [key]: state[key].filter((b) => b.id !== id),
@@ -91,7 +160,7 @@ export const useBranchStore = create((set, get) => ({
       }));
       return true;
     } catch (err) {
-      console.error(`Error deleting branch${level}:`, err);
+      console.error(`Error deleting branch level ${level}:`, err);
       set({ error: err.message, loading: false });
       return false;
     }
@@ -160,6 +229,16 @@ export const useBranchStore = create((set, get) => ({
   },
 
   // Clear error
-  clearError: () => set({ error: null })
+  clearError: () => set({ error: null }),
+
+  // Clear all branches (used on logout)
+  clearAllBranches: () => set({
+    branches1: [],
+    branches2: [],
+    branches3: [],
+    branches4: [],
+    branches5: [],
+    error: null
+  })
 }));
 
