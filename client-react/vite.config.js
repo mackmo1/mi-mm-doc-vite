@@ -35,7 +35,6 @@ export default defineConfig({
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom'],
-          editor: ['jquery', 'trumbowyg'],
           supabase: ['@supabase/supabase-js']
         }
       }
