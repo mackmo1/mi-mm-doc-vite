@@ -71,12 +71,16 @@ export const useBranchStore = create((set, get) => ({
 
       // Map frontend field names to database column names
       const insertData = {
-        branch_id: branch.branch_id || null,
         title: branch.title,
         content: branch.content,
         is_show: branch.isShow || false,
         is_add: branch.isAdd || false
       };
+
+      // Only include branch_id for levels 2-5 (level 1 has no parent)
+      if (level > 1 && branch.branch_id) {
+        insertData.branch_id = branch.branch_id;
+      }
 
       const { data, error } = await supabase
         .from(tableName)
