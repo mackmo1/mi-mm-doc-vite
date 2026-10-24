@@ -70,10 +70,10 @@ function Editor() {
 
   // Update editor content when oldBranch changes (for editing)
   useEffect(() => {
-    if (editorRef.current && typeof $ !== 'undefined' && oldBranch?.content) {
+    if (editorRef.current && typeof $ !== 'undefined' && isUpdate && oldBranch?.content) {
       $(editorRef.current).trumbowyg('html', oldBranch.content);
     }
-  }, [oldBranch]);
+  }, [oldBranch, isUpdate]);
 
   // Handle form submission (add or update)
   const handleSubmit = useCallback(async () => {
