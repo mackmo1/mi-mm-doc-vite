@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useBranchStore } from '../store/branchStore';
 import { useUiStore } from '../store/uiStore';
 import ContextMenu from './ContextMenu';
@@ -15,8 +15,11 @@ function BranchItem({ branch, level, parentChain = [] }) {
 
   const {
     menuVisibleBranchId, menuVisibleLevel,
-    showMenu, hideMenu, setUpdateMode
+    showMenu, hideMenu, setUpdateMode, closeNav,
+    isUpdate, oldBranch, branchType
   } = useUiStore();
+
+  const menuButtonRef = useRef(null);
 
   // Get child branches for the next level
   const getChildBranches = useCallback(() => {
@@ -32,14 +35,7 @@ function BranchItem({ branch, level, parentChain = [] }) {
 
     const children = branchesMap[childLevel] || [];
 
-    // Filter by parent chain to ensure proper nesting
-    return children.filter(child => {
-      if (child.branch_id !== branch.id) return false;
-
-      // Verify the parent chain is correct for deeper levels
-      // This ensures we only show children under the correct ancestor path
-      return true;
-    });
+    return children.filter(child => child.branch_id === branch.id);
   }, [level, branch.id, branches2, branches3, branches4, branches5]);
 
   // Handle expand/collapse toggle
@@ -48,71 +44,94 @@ function BranchItem({ branch, level, parentChain = [] }) {
     toggleBranchShow(level, branch.id);
   };
 
-  // Handle right-click context menu
-  const handleContextMenu = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const openMenu = () => {
     resetAllIsAdd();
     setIsAdd(level, branch.id);
     showMenu(branch.id, level);
   };
 
-  // Handle click to edit branch
+  // Handle right-click context menu
+  const handleContextMenu = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openMenu();
+  };
+
+  // Handle the visible "More actions" button
+  const handleMenuButton = (e) => {
+    e.stopPropagation();
+    if (isMenuVisible) {
+      hideMenu();
+    } else {
+      openMenu();
+    }
+  };
+
+  // Handle click to open the branch in the editor
   const handleClick = async (e) => {
     e.stopPropagation();
-
-    // Add active class to this item (jQuery-like behavior)
-    const items = document.querySelectorAll('.item');
-    items.forEach(item => item.classList.remove('active'));
-    e.currentTarget.closest('.item')?.classList.add('active');
+    hideMenu();
 
     // Fetch the full branch data and set update mode
     const fullBranch = await fetchBranch(level, branch.id);
     if (fullBranch) {
       setUpdateMode(fullBranch, `branch${level}`);
-
-      // Update Trumbowyg editor content if available
-      if (typeof $ !== 'undefined' && $('.form-control').length) {
-        $('.form-control').trumbowyg('html', fullBranch.content);
-      }
+      closeNav();
     }
   };
 
   // Check if context menu should be visible for this branch
   const isMenuVisible = menuVisibleBranchId === branch.id && menuVisibleLevel === level;
 
+  const isActive = isUpdate && oldBranch?.id === branch.id && branchType === `branch${level}`;
+
   // Check if we can have children (not at level 5)
   const canHaveChildren = level < 5;
   const childBranches = getChildBranches();
-  const hasChildren = childBranches.length > 0;
+  const hasChildren = canHaveChildren && childBranches.length > 0;
+  const isExpanded = Boolean(branch.isShow);
 
   return (
-    <li className="item">
-      {/* Expand/collapse icon - only show if can have children */}
-      {canHaveChildren && (
-        branch.isShow ? (
-          <i
-            className="descIcon fa fa-sort-desc"
-            aria-hidden="true"
-            onClick={handleToggle}
-          />
-        ) : (
-          <i
-            className="descIcon fa fa-caret-right"
-            aria-hidden="true"
-            onClick={handleToggle}
-          />
-        )
-      )}
-
-      {/* Branch title - for level 5, add spacing */}
-      <h3
-        className="title"
+    <li className={`item${isActive ? ' active' : ''}`} style={{ '--depth': level - 1 }}>
+      <div
+        className={`branch-row${isActive ? ' is-active' : ''}${isMenuVisible ? ' is-menu-open' : ''}`}
         onContextMenu={handleContextMenu}
-        onClick={handleClick}
       >
-        {level === 5 && '\u00A0 '}{branch.title}
-      </h3>
+        {hasChildren ? (
+          <button
+            type="button"
+            className={`branch-row__toggle descIcon${isExpanded ? ' is-expanded' : ''}`}
+            aria-expanded={isExpanded}
+            aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${branch.title}`}
+            onClick={handleToggle}
+          >
+            <i className="fa-solid fa-chevron-right" aria-hidden="true" />
+          </button>
+        ) : (
+          <span className="branch-row__spacer" aria-hidden="true" />
+        )}
+
+        <button
+          type="button"
+          className="branch-row__title title"
+          aria-current={isActive ? 'page' : undefined}
+          onClick={handleClick}
+        >
+          {branch.title}
+        </button>
+
+        <button
+          type="button"
+          ref={menuButtonRef}
+          className="branch-row__more"
+          aria-label={`More actions for ${branch.title}`}
+          aria-haspopup="menu"
+          aria-expanded={isMenuVisible}
+          onClick={handleMenuButton}
+        >
+          <i className="fa-solid fa-ellipsis" aria-hidden="true" />
+        </button>
+      </div>
 
       {/* Context menu */}
       {isMenuVisible && (
@@ -120,11 +139,12 @@ function BranchItem({ branch, level, parentChain = [] }) {
           branch={branch}
           level={level}
           onClose={hideMenu}
+          triggerRef={menuButtonRef}
         />
       )}
 
-      {/* Child branches - only render if expanded and not at level 5 */}
-      {branch.isShow && canHaveChildren && hasChildren && (
+      {/* Child branches - only render if expanded */}
+      {isExpanded && hasChildren && (
         <ul className="items">
           {childBranches.map(childBranch => (
             <BranchItem
@@ -141,4 +161,3 @@ function BranchItem({ branch, level, parentChain = [] }) {
 }
 
 export default BranchItem;
-

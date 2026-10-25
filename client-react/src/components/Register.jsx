@@ -7,6 +7,7 @@ export default function Register({ onSwitchToLogin }) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [validationError, setValidationError] = useState('');
+  const [notice, setNotice] = useState('');
   const { register, isLoading, error, clearError } = useAuthStore();
 
   const validateUsername = (value) => {
@@ -18,26 +19,30 @@ export default function Register({ onSwitchToLogin }) {
     e.preventDefault();
     clearError();
     setValidationError('');
+    setNotice('');
     
     // Validate username format
     if (!validateUsername(username)) {
-      setValidationError('Username must be 3-30 characters, start with a letter, and contain only letters, numbers, and underscores');
+      setValidationError('Usernames must be 3–30 characters long, start with a letter and contain only letters, numbers and underscores.');
       return;
     }
     
     // Validate password match
     if (password !== confirmPassword) {
-      setValidationError('Passwords do not match');
+      setValidationError('The passwords do not match.');
       return;
     }
     
     // Validate password length
     if (password.length < 6) {
-      setValidationError('Password must be at least 6 characters');
+      setValidationError('Your password must be at least 6 characters long.');
       return;
     }
     
-    await register(username, email, password);
+    const result = await register(username, email, password);
+    if (result?.message) {
+      setNotice(result.message);
+    }
   };
 
   const displayError = validationError || error;
@@ -45,14 +50,25 @@ export default function Register({ onSwitchToLogin }) {
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h1 className="auth-title">Create Account</h1>
-        <p className="auth-subtitle">Register to start organizing your documentation</p>
+        <div className="brand auth-brand">
+          <span className="brand__mark" aria-hidden="true" />
+          <span className="brand__name">KH-Doc</span>
+        </div>
+        <h1 className="auth-title">Create your account</h1>
+        <p className="auth-subtitle">Start organizing your notes in branches.</p>
         
         <form onSubmit={handleSubmit} className="auth-form">
           {displayError && (
-            <div className="auth-error">
-              <i className="fa fa-exclamation-circle"></i>
+            <div className="auth-error" role="alert">
+              <i className="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
               {displayError}
+            </div>
+          )}
+
+          {notice && !displayError && (
+            <div className="auth-notice" role="status">
+              <i className="fa-solid fa-envelope" aria-hidden="true"></i>
+              {notice}
             </div>
           )}
           
@@ -66,8 +82,11 @@ export default function Register({ onSwitchToLogin }) {
               placeholder="Choose a username"
               required
               autoComplete="username"
+              aria-describedby="username-hint"
             />
-            <small className="form-hint">3-30 characters, letters, numbers, underscores</small>
+            <small className="form-hint" id="username-hint">
+              3–30 characters. Start with a letter; use only letters, numbers and underscores.
+            </small>
           </div>
           
           <div className="form-group">
@@ -77,7 +96,7 @@ export default function Register({ onSwitchToLogin }) {
               id="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter your email"
+              placeholder="you@example.com"
               required
               autoComplete="email"
             />
@@ -90,7 +109,7 @@ export default function Register({ onSwitchToLogin }) {
               id="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Choose a password"
+              placeholder="At least 6 characters"
               required
               autoComplete="new-password"
               minLength={6}
@@ -98,13 +117,13 @@ export default function Register({ onSwitchToLogin }) {
           </div>
           
           <div className="form-group">
-            <label htmlFor="confirmPassword">Confirm Password</label>
+            <label htmlFor="confirmPassword">Confirm password</label>
             <input
               type="password"
               id="confirmPassword"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Confirm your password"
+              placeholder="Re-enter your password"
               required
               autoComplete="new-password"
             />
@@ -112,19 +131,16 @@ export default function Register({ onSwitchToLogin }) {
           
           <button 
             type="submit" 
-            className="auth-button"
+            className="btn btn-primary btn-block"
             disabled={isLoading}
           >
             {isLoading ? (
               <>
-                <i className="fa fa-spinner fa-spin"></i>
-                Creating account...
+                <span className="spinner" aria-hidden="true"></span>
+                Creating account…
               </>
             ) : (
-              <>
-                <i className="fa fa-user-plus"></i>
-                Create Account
-              </>
+              'Create account'
             )}
           </button>
         </form>

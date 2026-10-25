@@ -90,6 +90,33 @@ describe('uiStore', () => {
       expect(state.isUpdate).toBe(true);
       expect(state.branchType).toBe('branch3');
     });
+
+    it('should open the editor when a branch is opened or a new branch is started', () => {
+      const { setUpdateMode, closeEditor, setType, resetToAdd } = useUiStore.getState();
+
+      setUpdateMode({ id: 1, title: 'Open me' }, 'branch1');
+      expect(useUiStore.getState().isEditor).toBe(true);
+
+      closeEditor();
+      setType('branch2', { id: 1, title: 'Parent' });
+      expect(useUiStore.getState().isEditor).toBe(true);
+
+      closeEditor();
+      resetToAdd();
+      expect(useUiStore.getState().isEditor).toBe(true);
+    });
+  });
+
+  describe('Mobile library drawer', () => {
+    it('should open and close the drawer', () => {
+      useUiStore.setState({ isNavOpen: false });
+
+      useUiStore.getState().openNav();
+      expect(useUiStore.getState().isNavOpen).toBe(true);
+
+      useUiStore.getState().closeNav();
+      expect(useUiStore.getState().isNavOpen).toBe(false);
+    });
   });
 
   describe('Context menu actions', () => {

@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import App from '../../App';
 import { useUiStore } from '../../store/uiStore';
 import { useBranchStore } from '../../store/branchStore';
+import { useAuthStore } from '../../store/authStore';
 
 // Mock the child components to isolate App testing
 vi.mock('../LeftSide', () => ({
@@ -11,16 +12,6 @@ vi.mock('../LeftSide', () => ({
 
 vi.mock('../Editor', () => ({
   default: () => <div data-testid="editor">Editor Mock</div>
-}));
-
-// Mock the API
-vi.mock('../../services/api', () => ({
-  default: {
-    get: vi.fn(() => Promise.resolve({ data: [] })),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn()
-  }
 }));
 
 describe('App Component', () => {
@@ -34,7 +25,8 @@ describe('App Component', () => {
       selectedParentId: null,
       menuVisibleLevel: null,
       menuVisibleBranchId: null,
-      editorRef: null
+      editorRef: null,
+      isNavOpen: false
     });
     useBranchStore.setState({
       branches1: [],
@@ -43,27 +35,59 @@ describe('App Component', () => {
       branches4: [],
       branches5: [],
       loading: false,
-      error: null
+      error: null,
+      fetchAllBranches: vi.fn()
+    });
+    useAuthStore.setState({
+      user: { id: 'u1', email: 'ada@example.com', username: 'Ada' },
+      isAuthenticated: true,
+      initialized: true,
+      initialize: vi.fn(),
+      logout: vi.fn(async () => {})
     });
   });
 
-  it('should render welcome message when editor is closed', () => {
+  it('should render the KH-Doc header and account controls', () => {
     render(<App />);
-    
-    expect(screen.getByText('Welcome to kh best documentation side :)')).toBeInTheDocument();
-    expect(screen.getByText(/Either there is no branches/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Open The Editor' })).toBeInTheDocument();
+
+    expect(screen.getByText('KH-Doc')).toBeInTheDocument();
+    expect(screen.getByText('Ada')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Log out' })).toBeInTheDocument();
+    expect(screen.queryByText(/Welcome to kh best documentation/i)).not.toBeInTheDocument();
   });
 
-  it('should open editor when "Open The Editor" button is clicked', () => {
+  it('should render the first-use empty state when there are no branches', () => {
     render(<App />);
-    
-    const openButton = screen.getByRole('button', { name: 'Open The Editor' });
-    fireEvent.click(openButton);
-    
-    // Check that editor is now visible
-    expect(screen.getByTestId('editor')).toBeInTheDocument();
+
+    expect(screen.getByRole('heading', { name: 'Your notes begin here.' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create your first branch' })).toBeInTheDocument();
     expect(screen.getByTestId('left-side')).toBeInTheDocument();
+  });
+
+  it('should open the editor from the first-use empty state', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Create your first branch' }));
+
+    expect(screen.getByTestId('editor')).toBeInTheDocument();
+    expect(useUiStore.getState().branchType).toBe('branch1');
+  });
+
+  it('should prompt to select a branch when branches exist', () => {
+    useBranchStore.setState({ branches1: [{ id: 1, title: 'Main', isShow: false, isAdd: false }] });
+
+    render(<App />);
+
+    expect(screen.getByRole('heading', { name: 'Select a branch' })).toBeInTheDocument();
+    expect(within(screen.getByRole('main')).getByRole('button', { name: 'New branch' })).toBeInTheDocument();
+  });
+
+  it('should show a loading state while branches load', () => {
+    useBranchStore.setState({ loading: true });
+
+    render(<App />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('Loading your branches…');
   });
 
   it('should render editor and left side when isEditor is true', () => {
@@ -73,7 +97,7 @@ describe('App Component', () => {
     
     expect(screen.getByTestId('editor')).toBeInTheDocument();
     expect(screen.getByTestId('left-side')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Open The Editor' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create your first branch' })).not.toBeInTheDocument();
   });
 
   it('should call fetchAllBranches on mount', async () => {
@@ -85,5 +109,40 @@ describe('App Component', () => {
     // fetchAllBranches should be called on mount
     expect(fetchAllBranches).toHaveBeenCalled();
   });
-});
 
+  it('should log out and clear branches', async () => {
+    const logout = vi.fn(async () => {});
+    const clearAllBranches = vi.fn();
+    useAuthStore.setState({ logout });
+    useBranchStore.setState({ clearAllBranches });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Log out' }));
+
+    await waitFor(() => {
+      expect(logout).toHaveBeenCalled();
+      expect(clearAllBranches).toHaveBeenCalled();
+    });
+  });
+
+  it('should open the mobile library and account menu from the header', () => {
+    render(<App />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open library' }));
+    expect(useUiStore.getState().isNavOpen).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Account' }));
+    expect(screen.getByRole('menu', { name: 'Account' })).toHaveTextContent('ada@example.com');
+    expect(screen.getByRole('menuitem', { name: 'Log out' })).toBeInTheDocument();
+  });
+
+  it('should render the sign-in screen when not authenticated', () => {
+    useAuthStore.setState({ isAuthenticated: false, user: null });
+
+    render(<App />);
+
+    expect(screen.getByRole('heading', { name: 'Welcome back' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
+  });
+});
