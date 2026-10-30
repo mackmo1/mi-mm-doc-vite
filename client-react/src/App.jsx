@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useUiStore } from './store/uiStore';
 import { useBranchStore } from './store/branchStore';
 import { useAuthStore } from './store/authStore';
+import AppHeader from './components/AppHeader';
 import LeftSide from './components/LeftSide';
 import Editor from './components/Editor';
 import Login from './components/Login';
@@ -9,11 +10,10 @@ import Register from './components/Register';
 import './scss/main.scss';
 
 function App() {
-  const { isEditor, openEditor } = useUiStore();
-  const { fetchAllBranches, clearAllBranches } = useBranchStore();
-  const { isAuthenticated, user, logout, initialize, initialized } = useAuthStore();
+  const { isEditor, resetToAdd, isNavOpen, closeNav } = useUiStore();
+  const { branches1, loading, fetchAllBranches, clearAllBranches } = useBranchStore();
+  const { isAuthenticated, logout, initialize, initialized } = useAuthStore();
   const [authView, setAuthView] = useState('login'); // 'login' or 'register'
-  const title = "Welcome to kh best documentation side :)";
 
   // Initialize auth on mount (Supabase session check)
   useEffect(() => {
@@ -27,6 +27,21 @@ function App() {
     }
   }, [isAuthenticated, fetchAllBranches]);
 
+  // Keep the app shell within the visible viewport when the on-screen keyboard opens
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return undefined;
+
+    const update = () => {
+      if (viewport.scale > 1) return;
+      document.documentElement.style.setProperty('--app-height', `${viewport.height}px`);
+    };
+
+    update();
+    viewport.addEventListener('resize', update);
+    return () => viewport.removeEventListener('resize', update);
+  }, []);
+
   // Handle logout
   const handleLogout = async () => {
     await logout();
@@ -37,10 +52,10 @@ function App() {
   if (!initialized) {
     return (
       <div className="auth-container">
-        <div className="auth-card" style={{ textAlign: 'center' }}>
-          <i className="fa fa-spinner fa-spin" style={{ fontSize: '32px', color: '#667eea' }}></i>
-          <p style={{ marginTop: '16px', color: '#666' }}>Loading...</p>
-        </div>
+        <p className="app-loading" role="status">
+          <span className="spinner" aria-hidden="true" />
+          Loading…
+        </p>
       </div>
     );
   }
@@ -54,37 +69,60 @@ function App() {
     );
   }
 
+  const hasBranches = branches1.length > 0;
+
+  const renderEmptyState = () => {
+    if (loading && !hasBranches) {
+      return (
+        <p className="empty-state__loading" role="status">
+          <span className="spinner" aria-hidden="true" />
+          Loading your branches…
+        </p>
+      );
+    }
+
+    if (!hasBranches) {
+      return (
+        <>
+          <h1 className="empty-state__title">Your notes begin here.</h1>
+          <p className="empty-state__text">Create your first branch to organize your thoughts.</p>
+          <button type="button" className="btn btn-primary" onClick={resetToAdd}>
+            <i className="fa-solid fa-plus" aria-hidden="true" />
+            Create your first branch
+          </button>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <h1 className="empty-state__title">Select a branch</h1>
+        <p className="empty-state__text">
+          Choose a branch from your library to open it, or create a new one.
+        </p>
+        <button type="button" className="btn btn-primary" onClick={resetToAdd}>
+          <i className="fa-solid fa-plus" aria-hidden="true" />
+          New branch
+        </button>
+      </>
+    );
+  };
+
   // Main authenticated app
   return (
     <div className="app">
-      <div className="app-header">
-        <h1 className="header-title">{title}</h1>
-        <div className="user-info">
-          <span className="username">
-            <i className="fa fa-user"></i> {user?.username}
-          </span>
-          <button className="logout-btn" onClick={handleLogout}>
-            <i className="fa fa-sign-out"></i> Logout
-          </button>
-        </div>
+      <AppHeader onLogout={handleLogout} />
+      <div className="app-body">
+        <LeftSide />
+        {isNavOpen && <div className="nav-backdrop" onClick={closeNav} aria-hidden="true" />}
+        <main className="main">
+          {isEditor ? (
+            <Editor />
+          ) : (
+            <section className="empty-state">{renderEmptyState()}</section>
+          )}
+        </main>
       </div>
-      {isEditor ? (
-        <div className="template">
-          <LeftSide />
-          <Editor />
-        </div>
-      ) : (
-        <div className="branchInfo">
-          <div className="caption">
-            <p>
-              Either there is no branches or you didn't choosing a branch to view
-              so add new branch or edit any available branch{' '}
-              <span>by right click on the branch.</span>
-            </p>
-            <button onClick={openEditor}>Open The Editor</button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

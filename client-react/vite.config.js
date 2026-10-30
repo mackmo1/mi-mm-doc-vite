@@ -8,7 +8,7 @@ export default defineConfig({
 
   // Base path for GitHub Pages deployment
   // Change this to '/' if using a custom domain
-  base: '/mi-mm-doc-vite/',
+  base: process.env.VITE_BASE_PATH || '/mi-mm-doc-vite/',
 
   server: {
     port: 3000

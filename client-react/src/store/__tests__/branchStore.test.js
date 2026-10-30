@@ -1,17 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useBranchStore } from '../branchStore';
+import { supabase } from '../../lib/supabase';
 
-// Mock the API module
-vi.mock('../../services/api', () => ({
-  default: {
-    get: vi.fn(),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn()
-  }
-}));
-
-import api from '../../services/api';
+// Build a chainable Supabase query that resolves to the given result
+const mockQuery = (result) => {
+  const query = {};
+  ['select', 'order', 'eq', 'single', 'insert', 'update', 'delete'].forEach((method) => {
+    query[method] = vi.fn(() => query);
+  });
+  query.then = (resolve, reject) => Promise.resolve(result).then(resolve, reject);
+  return query;
+};
 
 describe('branchStore', () => {
   // Reset the store before each test
@@ -146,24 +145,43 @@ describe('branchStore', () => {
 
   describe('API actions', () => {
     it('should fetch branches and initialize isShow/isAdd', async () => {
-      api.get.mockResolvedValue({
+      supabase.from.mockReturnValueOnce(mockQuery({
         data: [
           { id: 1, title: 'Branch 1' },
-          { id: 2, title: 'Branch 2' }
-        ]
-      });
+          { id: 2, title: 'Branch 2', is_show: true }
+        ],
+        error: null
+      }));
 
       const { fetchBranches } = useBranchStore.getState();
       await fetchBranches(1);
 
+      expect(supabase.from).toHaveBeenCalledWith('branches1');
       const state = useBranchStore.getState();
       expect(state.branches1).toHaveLength(2);
       expect(state.branches1[0].isShow).toBe(false);
       expect(state.branches1[0].isAdd).toBe(false);
+      expect(state.branches1[1].isShow).toBe(true);
+    });
+
+    it('should keep the expanded state of existing branches when refetching', async () => {
+      useBranchStore.setState({
+        branches1: [{ id: 1, title: 'Branch 1', isShow: true, isAdd: false }]
+      });
+      supabase.from.mockReturnValueOnce(mockQuery({
+        data: [{ id: 1, title: 'Branch 1', is_show: false }, { id: 2, title: 'New' }],
+        error: null
+      }));
+
+      await useBranchStore.getState().fetchBranches(1);
+
+      const state = useBranchStore.getState();
+      expect(state.branches1.find(b => b.id === 1).isShow).toBe(true);
+      expect(state.branches1.find(b => b.id === 2).isShow).toBe(false);
     });
 
     it('should handle fetch error gracefully', async () => {
-      api.get.mockRejectedValue(new Error('Network error'));
+      supabase.from.mockReturnValueOnce(mockQuery({ data: null, error: new Error('Network error') }));
 
       const { fetchBranches } = useBranchStore.getState();
       await fetchBranches(1);
@@ -173,14 +191,22 @@ describe('branchStore', () => {
     });
 
     it('should add a new branch', async () => {
-      api.post.mockResolvedValue({
-        data: { id: 10, title: 'New Branch', content: '<p>Content</p>' }
+      const query = mockQuery({
+        data: { id: 10, title: 'New Branch', content: '<p>Content</p>' },
+        error: null
       });
+      supabase.from.mockReturnValueOnce(query);
 
       const { addBranch } = useBranchStore.getState();
       const result = await addBranch(1, { title: 'New Branch', content: '<p>Content</p>' });
 
-      expect(api.post).toHaveBeenCalledWith('/branches1', { title: 'New Branch', content: '<p>Content</p>' });
+      expect(supabase.from).toHaveBeenCalledWith('branches1');
+      expect(query.insert).toHaveBeenCalledWith({
+        title: 'New Branch',
+        content: '<p>Content</p>',
+        is_show: false,
+        is_add: false
+      });
       expect(result).toEqual({ id: 10, title: 'New Branch', content: '<p>Content</p>' });
 
       const state = useBranchStore.getState();
@@ -189,14 +215,35 @@ describe('branchStore', () => {
       expect(state.branches1[0].isAdd).toBe(false);
     });
 
+    it('should include the parent id when adding a child branch', async () => {
+      const query = mockQuery({ data: { id: 11, branch_id: 3, title: 'Child' }, error: null });
+      supabase.from.mockReturnValueOnce(query);
+
+      await useBranchStore.getState().addBranch(2, { title: 'Child', content: '', branch_id: 3 });
+
+      expect(supabase.from).toHaveBeenCalledWith('branches2');
+      expect(query.insert).toHaveBeenCalledWith(expect.objectContaining({ branch_id: 3 }));
+    });
+
+    it('should return null and set an error when adding fails', async () => {
+      supabase.from.mockReturnValueOnce(mockQuery({ data: null, error: new Error('Insert failed') }));
+
+      const result = await useBranchStore.getState().addBranch(1, { title: 'New Branch', content: '' });
+
+      expect(result).toBe(null);
+      expect(useBranchStore.getState().error).toBe('Insert failed');
+      expect(useBranchStore.getState().branches1).toHaveLength(0);
+    });
+
     it('should update an existing branch', async () => {
       useBranchStore.setState({
         branches2: [{ id: 5, title: 'Old Title', content: '<p>Old</p>', isShow: true, isAdd: false }]
       });
 
-      api.patch.mockResolvedValue({
-        data: { id: 5, title: 'Updated Title', content: '<p>New</p>' }
-      });
+      supabase.from.mockReturnValueOnce(mockQuery({
+        data: { id: 5, title: 'Updated Title', content: '<p>New</p>' },
+        error: null
+      }));
 
       const { updateBranch } = useBranchStore.getState();
       await updateBranch(2, { id: 5, title: 'Updated Title', content: '<p>New</p>' });
@@ -214,11 +261,13 @@ describe('branchStore', () => {
         ]
       });
 
-      api.delete.mockResolvedValue({});
+      const query = mockQuery({ error: null });
+      supabase.from.mockReturnValueOnce(query);
 
       const { deleteBranch } = useBranchStore.getState();
       const result = await deleteBranch(3, 2);
 
+      expect(query.eq).toHaveBeenCalledWith('id', 2);
       expect(result).toBe(true);
       const state = useBranchStore.getState();
       expect(state.branches3).toHaveLength(1);
@@ -226,29 +275,29 @@ describe('branchStore', () => {
     });
 
     it('should fetch a single branch by id', async () => {
-      api.get.mockResolvedValue({
-        data: { id: 5, title: 'Single Branch', content: '<p>Content</p>' }
+      const query = mockQuery({
+        data: { id: 5, title: 'Single Branch', content: '<p>Content</p>' },
+        error: null
       });
+      supabase.from.mockReturnValueOnce(query);
 
       const { fetchBranch } = useBranchStore.getState();
       const result = await fetchBranch(2, 5);
 
-      expect(api.get).toHaveBeenCalledWith('/branches2/5');
+      expect(supabase.from).toHaveBeenCalledWith('branches2');
+      expect(query.eq).toHaveBeenCalledWith('id', 5);
       expect(result).toEqual({ id: 5, title: 'Single Branch', content: '<p>Content</p>' });
     });
 
     it('should fetch all branches at once', async () => {
-      api.get.mockResolvedValue({ data: [] });
-
       const { fetchAllBranches } = useBranchStore.getState();
       await fetchAllBranches();
 
-      expect(api.get).toHaveBeenCalledTimes(5);
-      expect(api.get).toHaveBeenCalledWith('/branches1');
-      expect(api.get).toHaveBeenCalledWith('/branches2');
-      expect(api.get).toHaveBeenCalledWith('/branches3');
-      expect(api.get).toHaveBeenCalledWith('/branches4');
-      expect(api.get).toHaveBeenCalledWith('/branches5');
+      expect(supabase.from).toHaveBeenCalledTimes(5);
+      [1, 2, 3, 4, 5].forEach((level) => {
+        expect(supabase.from).toHaveBeenCalledWith(`branches${level}`);
+      });
+      expect(useBranchStore.getState().loading).toBe(false);
     });
   });
 

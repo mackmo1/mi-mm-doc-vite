@@ -20,13 +20,17 @@ export default function Login({ onSwitchToRegister }) {
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h1 className="auth-title">Welcome Back</h1>
-        <p className="auth-subtitle">Sign in to access your documentation</p>
+        <div className="brand auth-brand">
+          <span className="brand__mark" aria-hidden="true" />
+          <span className="brand__name">KH-Doc</span>
+        </div>
+        <h1 className="auth-title">Welcome back</h1>
+        <p className="auth-subtitle">Sign in to continue to your notes.</p>
         
         <form onSubmit={handleSubmit} className="auth-form">
           {error && (
-            <div className="auth-error">
-              <i className="fa fa-exclamation-circle"></i>
+            <div className="auth-error" role="alert">
+              <i className="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
               {error}
             </div>
           )}
@@ -38,7 +42,7 @@ export default function Login({ onSwitchToRegister }) {
               id="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter your email"
+              placeholder="you@example.com"
               required
               autoComplete="email"
             />
@@ -59,26 +63,23 @@ export default function Login({ onSwitchToRegister }) {
           
           <button 
             type="submit" 
-            className="auth-button"
+            className="btn btn-primary btn-block"
             disabled={isLoading}
           >
             {isLoading ? (
               <>
-                <i className="fa fa-spinner fa-spin"></i>
-                Signing in...
+                <span className="spinner" aria-hidden="true"></span>
+                Signing in…
               </>
             ) : (
-              <>
-                <i className="fa fa-sign-in"></i>
-                Sign In
-              </>
+              'Sign in'
             )}
           </button>
         </form>
         
         <div className="auth-footer">
           <p>
-            Don't have an account?{' '}
+            Don’t have an account?{' '}
             <button 
               type="button" 
               className="auth-link"
@@ -92,4 +93,3 @@ export default function Login({ onSwitchToRegister }) {
     </div>
   );
 }
-

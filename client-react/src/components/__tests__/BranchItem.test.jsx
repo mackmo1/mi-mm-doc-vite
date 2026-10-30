@@ -4,16 +4,6 @@ import BranchItem from '../BranchItem';
 import { useUiStore } from '../../store/uiStore';
 import { useBranchStore } from '../../store/branchStore';
 
-// Mock the API
-vi.mock('../../services/api', () => ({
-  default: {
-    get: vi.fn(() => Promise.resolve({ data: { id: 1, title: 'Test', content: '<p>Content</p>' } })),
-    post: vi.fn(),
-    patch: vi.fn(),
-    delete: vi.fn(() => Promise.resolve({}))
-  }
-}));
-
 describe('BranchItem Component', () => {
   const mockBranch = { 
     id: 1, 
@@ -52,37 +42,52 @@ describe('BranchItem Component', () => {
     expect(screen.getByText('Test Branch')).toBeInTheDocument();
   });
 
-  it('should render expand icon for levels 1-4', () => {
+  it('should render an expand control only for branches with children', () => {
+    useBranchStore.setState({
+      branches2: [{ id: 10, title: 'Child', branch_id: 1, isShow: false, isAdd: false }]
+    });
+
     render(<BranchItem branch={mockBranch} level={1} />);
-    
-    // Should have the caret-right icon (collapsed state)
-    expect(document.querySelector('.fa-caret-right')).toBeInTheDocument();
+
+    const toggle = screen.getByRole('button', { name: 'Expand Test Branch' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it('should NOT render expand icon for level 5', () => {
+  it('should NOT render an expand control for a branch without children', () => {
+    render(<BranchItem branch={mockBranch} level={1} />);
+
+    expect(screen.queryByRole('button', { name: /Expand|Collapse/ })).not.toBeInTheDocument();
+  });
+
+  it('should NOT render an expand control for level 5', () => {
     render(<BranchItem branch={{ ...mockBranch, id: 5 }} level={5} />);
-    
-    expect(document.querySelector('.fa-caret-right')).not.toBeInTheDocument();
-    expect(document.querySelector('.fa-sort-desc')).not.toBeInTheDocument();
+
+    expect(screen.queryByRole('button', { name: /Expand|Collapse/ })).not.toBeInTheDocument();
   });
 
-  it('should toggle isShow when expand icon is clicked', () => {
+  it('should toggle isShow when the expand control is clicked', () => {
+    useBranchStore.setState({
+      branches2: [{ id: 10, title: 'Child', branch_id: 1, isShow: false, isAdd: false }]
+    });
+
     render(<BranchItem branch={mockBranch} level={1} />);
-    
-    fireEvent.click(document.querySelector('.descIcon'));
-    
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand Test Branch' }));
+
     const state = useBranchStore.getState();
     expect(state.branches1[0].isShow).toBe(true);
   });
 
-  it('should show sort-desc icon when expanded', () => {
+  it('should show a collapse control when expanded', () => {
+    const expanded = { ...mockBranch, isShow: true };
     useBranchStore.setState({
-      branches1: [{ ...mockBranch, isShow: true }]
+      branches1: [expanded],
+      branches2: [{ id: 10, title: 'Child', branch_id: 1, isShow: false, isAdd: false }]
     });
-    
-    render(<BranchItem branch={{ ...mockBranch, isShow: true }} level={1} />);
-    
-    expect(document.querySelector('.fa-sort-desc')).toBeInTheDocument();
+
+    render(<BranchItem branch={expanded} level={1} />);
+
+    expect(screen.getByRole('button', { name: 'Collapse Test Branch' })).toHaveAttribute('aria-expanded', 'true');
   });
 
   it('should show context menu on right-click', () => {
@@ -96,13 +101,26 @@ describe('BranchItem Component', () => {
     expect(uiState.menuVisibleLevel).toBe(1);
   });
 
+  it('should toggle the menu with the "More actions" button', () => {
+    render(<BranchItem branch={mockBranch} level={1} />);
+
+    const moreButton = screen.getByRole('button', { name: 'More actions for Test Branch' });
+    fireEvent.click(moreButton);
+    expect(useUiStore.getState().menuVisibleBranchId).toBe(mockBranch.id);
+    expect(screen.getByRole('menuitem', { name: 'Add child branch' })).toBeInTheDocument();
+    expect(moreButton).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.click(moreButton);
+    expect(useUiStore.getState().menuVisibleBranchId).toBe(null);
+  });
+
   it('should render context menu when visible', () => {
     useUiStore.setState({ menuVisibleBranchId: 1, menuVisibleLevel: 1 });
     
     render(<BranchItem branch={mockBranch} level={1} />);
     
-    expect(screen.getByText('Add new Branch')).toBeInTheDocument();
-    expect(screen.getByText('Delete Branch')).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Add child branch' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Delete branch' })).toBeInTheDocument();
   });
 
   it('should render child branches when expanded', () => {
@@ -133,7 +151,12 @@ describe('BranchItem Component', () => {
     expect(screen.queryByText('Child')).not.toBeInTheDocument();
   });
 
-  it('should set update mode when branch title is clicked', async () => {
+  it('should open the branch in the editor when its title is clicked', async () => {
+    const fullBranch = { id: 1, title: 'Test Branch', content: '<p>Content</p>' };
+    const fetchBranch = vi.fn(async () => fullBranch);
+    useBranchStore.setState({ fetchBranch });
+    useUiStore.setState({ isEditor: false, isNavOpen: true });
+
     render(<BranchItem branch={mockBranch} level={1} />);
     
     fireEvent.click(screen.getByText('Test Branch'));
@@ -141,8 +164,28 @@ describe('BranchItem Component', () => {
     await waitFor(() => {
       const uiState = useUiStore.getState();
       expect(uiState.isUpdate).toBe(true);
+      expect(uiState.isEditor).toBe(true);
       expect(uiState.branchType).toBe('branch1');
+      expect(uiState.oldBranch).toEqual(fullBranch);
+      expect(uiState.isNavOpen).toBe(false);
     });
+    expect(fetchBranch).toHaveBeenCalledWith(1, 1);
+  });
+
+  it('should mark the branch open in the editor as current', () => {
+    useUiStore.setState({ isUpdate: true, oldBranch: { id: 1 }, branchType: 'branch1' });
+
+    render(<BranchItem branch={mockBranch} level={1} />);
+
+    expect(screen.getByRole('button', { name: 'Test Branch' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('should not mark a same-id branch on another level as current', () => {
+    useUiStore.setState({ isUpdate: true, oldBranch: { id: 1 }, branchType: 'branch2' });
+
+    render(<BranchItem branch={mockBranch} level={1} />);
+
+    expect(screen.getByRole('button', { name: 'Test Branch' })).not.toHaveAttribute('aria-current');
   });
 });
 

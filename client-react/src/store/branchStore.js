@@ -31,10 +31,12 @@ export const useBranchStore = create((set, get) => ({
 
       if (error) throw error;
 
-      // Initialize isShow and isAdd properties for each branch
+      // Initialize isShow and isAdd properties for each branch,
+      // keeping the expanded state of branches already in the tree
+      const existing = get()[`branches${level}`];
       const branches = (data || []).map(b => ({
         ...b,
-        isShow: b.is_show ?? false,
+        isShow: existing.find(e => e.id === b.id)?.isShow ?? b.is_show ?? false,
         isAdd: b.is_add ?? false
       }));
       set({ [`branches${level}`]: branches });

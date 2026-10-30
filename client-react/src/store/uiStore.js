@@ -1,3 +1,4 @@
+/* global $ */
 import { create } from 'zustand';
 
 export const useUiStore = create((set, get) => ({
@@ -11,6 +12,11 @@ export const useUiStore = create((set, get) => ({
   // Context menu visibility flags (matching Vue's b1-b5)
   menuVisibleLevel: null, // Which level's menu is visible (1-5)
   menuVisibleBranchId: null, // Which branch's menu is visible
+
+  // Mobile library drawer
+  isNavOpen: false,
+  openNav: () => set({ isNavOpen: true }),
+  closeNav: () => set({ isNavOpen: false }),
 
   // Trumbowyg editor reference (will be set by Editor component)
   editorRef: null,
@@ -45,6 +51,7 @@ export const useUiStore = create((set, get) => ({
       $(editorRef).trumbowyg('html', '<h1 class="branch-name" id="branch-name"></h1>');
     }
     set({
+      isEditor: true,
       branchType: type,
       oldBranch: data,
       isUpdate: false,
@@ -60,6 +67,7 @@ export const useUiStore = create((set, get) => ({
       $(editorRef).trumbowyg('html', '<h1 class="branch-name" id="branch-name"></h1>');
     }
     set({
+      isEditor: true,
       oldBranch: null,
       branchType: 'branch1',
       isUpdate: false,
@@ -69,6 +77,7 @@ export const useUiStore = create((set, get) => ({
 
   // Set update mode when editing existing branch
   setUpdateMode: (branch, branchType) => set({
+    isEditor: true,
     oldBranch: branch,
     isUpdate: true,
     branchType
