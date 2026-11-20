@@ -158,6 +158,59 @@ describe('Editor local auto-save', () => {
     expect(fake.content).not.toContain('Half-written thought');
   });
 
+  describe('when editing an existing branch', () => {
+    const SERVER_HTML = '<h1 class="branch-name" id="branch-name">My notes</h1><p>Server version</p>';
+
+    beforeEach(() => {
+      useUiStore.setState({
+        isUpdate: true,
+        oldBranch: { id: 7, title: 'My notes', content: SERVER_HTML },
+        branchType: 'branch1',
+      });
+    });
+
+    it('shows the server content when there is no local draft', () => {
+      mountEditor();
+
+      expect(fake.content).toBe(SERVER_HTML);
+    });
+
+    it('restores the local draft over the server content after a refresh', () => {
+      const first = mountEditor();
+      typeAndWait(DRAFT_HTML);
+      first.unmount();
+
+      fake.content = '';
+      mountEditor();
+
+      expect(fake.content).toBe(DRAFT_HTML);
+    });
+
+    it('keeps drafts of different branches separate', () => {
+      const first = mountEditor();
+      typeAndWait(DRAFT_HTML);
+      first.unmount();
+
+      useUiStore.setState({ oldBranch: { id: 8, title: 'Other', content: '<p>Other server</p>' } });
+      fake.content = '';
+      mountEditor();
+
+      expect(fake.content).toBe('<p>Other server</p>');
+    });
+  });
+
+  it('does not lose edits made just before leaving the page', () => {
+    const first = mountEditor();
+
+    act(() => fake.type(DRAFT_HTML)); // no time passes: the debounce has not fired yet
+    first.unmount();
+
+    fake.content = '';
+    mountEditor();
+
+    expect(fake.content).toBe(DRAFT_HTML);
+  });
+
   it('clears the draft once the branch is saved to the server', async () => {
     const first = mountEditor();
     typeAndWait(DRAFT_HTML);
