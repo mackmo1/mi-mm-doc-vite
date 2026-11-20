@@ -10,7 +10,11 @@ import trumbowygIconsUrl from 'trumbowyg/dist/ui/icons.svg';
 
 const DEFAULT_CONTENT = '<h1 class="branch-name" id="branch-name"></h1>';
 const IDLE_STATUS = { type: 'idle', message: '' };
-const LOCAL_SAVED_STATUS = { type: 'saved', message: 'Saved locally' };
+const LOCAL_SAVED_STATUS = {
+  type: 'saved',
+  message: 'Draft saved',
+  hint: 'Kept on this device only. Save to store it permanently.'
+};
 
 // Local auto-save: drafts live in localStorage only and never reach the server
 const AUTOSAVE_DELAY_MS = 500;
@@ -318,7 +322,7 @@ function Editor() {
 
         <div className="editor-header__actions">
           {(status.type === 'saving' || status.type === 'saved') && (
-            <span className={`save-status save-status--${status.type}`} role="status">
+            <span className={`save-status save-status--${status.type}`} role="status" title={status.hint}>
               {status.type === 'saved' && <i className="fa-solid fa-check" aria-hidden="true" />}
               {status.message}
             </span>

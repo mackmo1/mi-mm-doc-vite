@@ -97,14 +97,35 @@ describe('Editor local auto-save', () => {
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
-  it('shows "Saved locally" with the saved style after the user types', () => {
+  it('shows "Draft saved" with the saved style after the user types', () => {
     mountEditor();
 
     typeAndWait(DRAFT_HTML);
 
     const status = screen.getByRole('status');
-    expect(status).toHaveTextContent('Saved locally');
+    expect(status).toHaveTextContent('Draft saved');
     expect(status).toHaveClass('save-status', 'save-status--saved');
+  });
+
+  it('explains in plain words that the draft is only on this device', () => {
+    mountEditor();
+
+    typeAndWait(DRAFT_HTML);
+
+    expect(screen.getByRole('status')).toHaveAttribute('title', expect.stringMatching(/this device/i));
+  });
+
+  it('shows "Saved" (not "Draft saved") once the server confirms the save', async () => {
+    mountEditor();
+    typeAndWait(DRAFT_HTML);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /create branch/i }));
+    });
+
+    const status = screen.getByRole('status');
+    expect(status).not.toHaveTextContent('Draft saved');
+    expect(status).toHaveTextContent(/created/i);
   });
 
   it('keeps the draft in the browser only, never calling the server', () => {
