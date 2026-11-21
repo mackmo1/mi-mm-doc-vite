@@ -1,7 +1,8 @@
 # Vignesh's preferences
 
 ## Scope
-- Work only in `client-react/` (Vite + React 19 + Supabase). `client/` (Vue) and `server/` (Express) are legacy.
+- The repo has three parts: `client-react/` (Vite + React 19, talks to Supabase directly), `client/` (Vue) and `server/` (Express + Postgres, JWT auth).
+- My current work is in `client-react/`. Don't edit `client/` or `server/` unless the task needs it, and don't assume either is unused.
 - This is another developer's product: make the smallest change that does the job. No unrelated refactors.
 
 ## Commands (run from `client-react/`)
