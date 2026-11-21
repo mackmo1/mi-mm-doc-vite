@@ -10,6 +10,26 @@ import trumbowygIconsUrl from 'trumbowyg/dist/ui/icons.svg';
 
 const DEFAULT_CONTENT = '<h1 class="branch-name" id="branch-name"></h1>';
 const IDLE_STATUS = { type: 'idle', message: '' };
+const LOCAL_SAVED_STATUS = {
+  type: 'saved',
+  message: 'Draft saved',
+  hint: 'Kept on this device only. Save to store it permanently.'
+};
+
+// Local auto-save: drafts live in localStorage only and never reach the server
+const AUTOSAVE_DELAY_MS = 500;
+const DRAFT_PREFIX = 'mm-doc-draft:';
+
+// Storage can be unavailable (private mode, quota), so drafts are best-effort
+const readDraft = (key) => {
+  try { return localStorage.getItem(key); } catch { return null; }
+};
+const writeDraft = (key, html) => {
+  try { localStorage.setItem(key, html); } catch { /* ignore */ }
+};
+const removeDraft = (key) => {
+  try { localStorage.removeItem(key); } catch { /* ignore */ }
+};
 
 /**
  * Collect the titles of a branch's ancestors, from the main branch down
@@ -40,6 +60,35 @@ function Editor() {
 
   // Extract level number from branchType (e.g., "branch2" -> 2)
   const level = parseInt(branchType?.replace('branch', '') || '1', 10);
+
+  // One draft per editing context: an existing branch, or a new branch under a parent
+  const draftKey = DRAFT_PREFIX + (isUpdate && oldBranch
+    ? `${branchType}:${oldBranch.id}`
+    : `new:${branchType}:${selectedParentId ?? 'root'}`);
+  const draftKeyRef = useRef(draftKey);
+  const draftTimerRef = useRef(null);
+  const pendingDraftRef = useRef(null);
+
+  useEffect(() => {
+    draftKeyRef.current = draftKey;
+  }, [draftKey]);
+
+  // Write any pending draft now. Returns true if something was written.
+  const flushDraft = useCallback(() => {
+    clearTimeout(draftTimerRef.current);
+    const pending = pendingDraftRef.current;
+    pendingDraftRef.current = null;
+    if (!pending) return false;
+    writeDraft(pending.key, pending.html);
+    return true;
+  }, []);
+
+  // Drop the draft, e.g. after the content reached the server
+  const discardDraft = useCallback(() => {
+    clearTimeout(draftTimerRef.current);
+    pendingDraftRef.current = null;
+    removeDraft(draftKeyRef.current);
+  }, []);
 
   // Replace the editor content without treating it as a user edit
   const setEditorContent = (html) => {
@@ -90,11 +139,16 @@ function Editor() {
       // Set initial content
       setEditorContent(DEFAULT_CONTENT);
 
-      // Clear the last save result once the user edits again
+      // On a user edit: clear the last save result and queue a local draft save
       $editor.on('tbwchange', () => {
-        if (!loadingContentRef.current && !savingRef.current) {
-          setStatus(IDLE_STATUS);
-        }
+        if (loadingContentRef.current || savingRef.current) return;
+
+        setStatus(IDLE_STATUS);
+        pendingDraftRef.current = { key: draftKeyRef.current, html: $editor.trumbowyg('html') };
+        clearTimeout(draftTimerRef.current);
+        draftTimerRef.current = setTimeout(() => {
+          if (flushDraft()) setStatus(LOCAL_SAVED_STATUS);
+        }, AUTOSAVE_DELAY_MS);
       });
 
       // Store ref for other components to access
@@ -120,6 +174,19 @@ function Editor() {
   useEffect(() => {
     setStatus(IDLE_STATUS);
   }, [oldBranch?.id, branchType, isUpdate]);
+
+  // Restore a local draft for this context (after the server content has loaded)
+  useEffect(() => {
+    if (!editorRef.current || typeof $ === 'undefined') return;
+    const draft = readDraft(draftKey);
+    if (draft) {
+      setEditorContent(draft);
+      setStatus(LOCAL_SAVED_STATUS);
+    }
+  }, [draftKey, oldBranch]);
+
+  // Save pending edits when switching context or leaving, so nothing typed is lost
+  useEffect(() => flushDraft, [draftKey, flushDraft]);
 
   // Place the cursor in the title when starting a new branch
   useEffect(() => {
@@ -167,6 +234,7 @@ function Editor() {
       const result = await updateBranch(level, updatedBranch);
 
       if (result) {
+        discardDraft();
         setStatus({ type: 'saved', message: 'Saved' });
         setTimeout(() => fetchBranches(level), 200);
       } else {
@@ -188,6 +256,8 @@ function Editor() {
       const result = await addBranch(level, newBranch);
 
       if (result) {
+        discardDraft();
+
         // Reveal the new branch under its parent
         if (level > 1 && selectedParentId) {
           const parent = useBranchStore.getState()[`branches${level - 1}`].find(b => b.id === selectedParentId);
@@ -207,7 +277,7 @@ function Editor() {
     }
 
     savingRef.current = false;
-  }, [isUpdate, oldBranch, level, selectedParentId, addBranch, updateBranch, fetchBranches, toggleBranchShow, clearError]);
+  }, [isUpdate, oldBranch, level, selectedParentId, addBranch, updateBranch, fetchBranches, toggleBranchShow, clearError, discardDraft]);
 
   // Describe where the user is in the branch hierarchy
   const renderContext = () => {
@@ -252,7 +322,7 @@ function Editor() {
 
         <div className="editor-header__actions">
           {(status.type === 'saving' || status.type === 'saved') && (
-            <span className={`save-status save-status--${status.type}`} role="status">
+            <span className={`save-status save-status--${status.type}`} role="status" title={status.hint}>
               {status.type === 'saved' && <i className="fa-solid fa-check" aria-hidden="true" />}
               {status.message}
             </span>
