@@ -1,0 +1,19 @@
+Editor auto-save: known gaps
+============================
+
+Left alone on purpose, to keep the change small.
+
+1. Failed save, then reopen
+   If a server save fails and the branch is reopened, the local draft is
+   restored but is not re-sent until the next edit.
+
+2. Manual save during auto-save
+   A click on "Save changes" while an auto-save is in flight is ignored for
+   that moment.
+
+3. Edits while a save is running when the user leaves
+   Those edits stay in the local draft only. They are not sent to the server.
+
+4. Other tabs
+   Nothing handles two tabs editing the same branch. It is last write wins
+   (the "draft always wins" choice, with no database change).
