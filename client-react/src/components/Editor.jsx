@@ -18,6 +18,8 @@ const LOCAL_SAVED_STATUS = {
 
 // Local auto-save: drafts live in localStorage only and never reach the server
 const AUTOSAVE_DELAY_MS = 500;
+// Server auto-save: runs after this much inactivity, and when the user leaves the editor
+const SERVER_SAVE_DELAY_MS = 3000;
 const DRAFT_PREFIX = 'mm-doc-draft:';
 
 // Storage can be unavailable (private mode, quota), so drafts are best-effort
@@ -68,6 +70,10 @@ function Editor() {
   const draftKeyRef = useRef(draftKey);
   const draftTimerRef = useRef(null);
   const pendingDraftRef = useRef(null);
+  const serverTimerRef = useRef(null);
+  const unsavedRef = useRef(null); // latest edit not yet sent to the server: { key, html, title }
+  const autosavingRef = useRef(false);
+  const autosaveRef = useRef(() => {});
 
   useEffect(() => {
     draftKeyRef.current = draftKey;
@@ -89,6 +95,41 @@ function Editor() {
     pendingDraftRef.current = null;
     removeDraft(draftKeyRef.current);
   }, []);
+
+  // Send the latest edit of an existing branch to the server. The local draft is only
+  // dropped once the server returns the saved row, and only if nothing newer was typed.
+  const autosave = useCallback(async () => {
+    const unsaved = unsavedRef.current;
+    if (!unsaved) return;
+    if (!isUpdate || !oldBranch || unsaved.title.length < 3) {
+      unsavedRef.current = null;
+      return;
+    }
+    if (autosavingRef.current || savingRef.current) return; // picked up after the current save
+
+    clearTimeout(serverTimerRef.current);
+    unsavedRef.current = null;
+    autosavingRef.current = true;
+    setStatus({ type: 'saving', message: 'Saving…' });
+
+    const result = await updateBranch(level, { ...oldBranch, title: unsaved.title, content: unsaved.html });
+    autosavingRef.current = false;
+
+    if (!result) {
+      clearError();
+      setStatus({ type: 'error', message: 'Your changes could not be saved. Please try again.' });
+    } else if (unsavedRef.current) {
+      // Typed during the save: keep the draft and wait again
+      serverTimerRef.current = setTimeout(() => autosaveRef.current(), SERVER_SAVE_DELAY_MS);
+    } else {
+      removeDraft(unsaved.key);
+      setStatus({ type: 'saved', message: 'Saved' });
+    }
+  }, [isUpdate, oldBranch, level, updateBranch, clearError]);
+
+  useEffect(() => {
+    autosaveRef.current = autosave;
+  }, [autosave]);
 
   // Replace the editor content without treating it as a user edit
   const setEditorContent = (html) => {
@@ -143,12 +184,22 @@ function Editor() {
       $editor.on('tbwchange', () => {
         if (loadingContentRef.current || savingRef.current) return;
 
+        const html = $editor.trumbowyg('html');
+        // Closing the editor resets it to the empty template, which fires this event too
+        if (html === DEFAULT_CONTENT) return;
+
         setStatus(IDLE_STATUS);
-        pendingDraftRef.current = { key: draftKeyRef.current, html: $editor.trumbowyg('html') };
+        pendingDraftRef.current = { key: draftKeyRef.current, html };
         clearTimeout(draftTimerRef.current);
         draftTimerRef.current = setTimeout(() => {
           if (flushDraft()) setStatus(LOCAL_SAVED_STATUS);
         }, AUTOSAVE_DELAY_MS);
+
+        // Snapshot now: when the user leaves, the editor and page are already gone
+        const title = (document.getElementById('branch-name')?.innerText || '').trim();
+        unsavedRef.current = { key: draftKeyRef.current, html, title };
+        clearTimeout(serverTimerRef.current);
+        serverTimerRef.current = setTimeout(() => autosaveRef.current(), SERVER_SAVE_DELAY_MS);
       });
 
       // Store ref for other components to access
@@ -185,8 +236,11 @@ function Editor() {
     }
   }, [draftKey, oldBranch]);
 
-  // Save pending edits when switching context or leaving, so nothing typed is lost
-  useEffect(() => flushDraft, [draftKey, flushDraft]);
+  // On switching context or leaving: keep the draft, then send the pending edit to the server
+  useEffect(() => () => {
+    flushDraft();
+    autosaveRef.current();
+  }, [draftKey, flushDraft]);
 
   // Place the cursor in the title when starting a new branch
   useEffect(() => {
@@ -206,7 +260,7 @@ function Editor() {
 
   // Handle form submission (add or update)
   const handleSubmit = useCallback(async () => {
-    if (savingRef.current) return;
+    if (savingRef.current || autosavingRef.current) return;
 
     const branchName = document.getElementById('branch-name');
 
@@ -219,6 +273,9 @@ function Editor() {
     const content = $(editorRef.current).trumbowyg('html');
     const title = branchName.innerText.trim();
 
+    // This manual save covers whatever auto-save was about to send
+    clearTimeout(serverTimerRef.current);
+    unsavedRef.current = null;
     savingRef.current = true;
 
     if (isUpdate && oldBranch) {
