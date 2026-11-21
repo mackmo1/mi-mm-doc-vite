@@ -248,4 +248,134 @@ describe('Editor local auto-save', () => {
     expect(fake.content).not.toContain('Half-written thought');
     expect(Object.keys(localStorage)).toHaveLength(0);
   });
+
+  describe('server auto-save of an existing branch', () => {
+    const SERVER_SAVE_DELAY_MS = 3000;
+    let updateBranch;
+
+    // Advance fake time and let the awaited save settle
+    const advance = (ms) => act(async () => { vi.advanceTimersByTime(ms); });
+
+    beforeEach(() => {
+      updateBranch = vi.fn().mockResolvedValue({ id: 7 });
+      useUiStore.setState({
+        isUpdate: true,
+        oldBranch: { id: 7, title: 'My notes', content: '<p>Server version</p>' },
+        branchType: 'branch1',
+      });
+      useBranchStore.setState({ updateBranch });
+    });
+
+    it('saves to the server after 3 seconds of inactivity', async () => {
+      mountEditor();
+
+      act(() => fake.type(DRAFT_HTML));
+      await advance(SERVER_SAVE_DELAY_MS - 100);
+      expect(updateBranch).not.toHaveBeenCalled();
+
+      await advance(200);
+      expect(updateBranch).toHaveBeenCalledTimes(1);
+      expect(updateBranch).toHaveBeenCalledWith(
+        1,
+        expect.objectContaining({ id: 7, title: 'My notes', content: DRAFT_HTML })
+      );
+    });
+
+    it('waits again while the user keeps typing, then saves once', async () => {
+      mountEditor();
+
+      act(() => fake.type('<p>a</p>'));
+      await advance(2000);
+      act(() => fake.type('<p>ab</p>'));
+      await advance(2000);
+      expect(updateBranch).not.toHaveBeenCalled();
+
+      await advance(1100);
+      expect(updateBranch).toHaveBeenCalledTimes(1);
+      expect(updateBranch).toHaveBeenCalledWith(1, expect.objectContaining({ content: '<p>ab</p>' }));
+    });
+
+    it('shows "Saving…" and then "Saved" once the server confirms', async () => {
+      let confirmSave;
+      updateBranch.mockReturnValue(new Promise((resolve) => { confirmSave = resolve; }));
+      mountEditor();
+
+      act(() => fake.type(DRAFT_HTML));
+      await advance(SERVER_SAVE_DELAY_MS + 100);
+      expect(screen.getByRole('status')).toHaveTextContent('Saving');
+
+      await act(async () => confirmSave({ id: 7 }));
+      expect(screen.getByRole('status')).toHaveTextContent(/^Saved$/);
+    });
+
+    it('saves pending edits straight away when the user leaves the editor', () => {
+      const first = mountEditor();
+
+      act(() => fake.type(DRAFT_HTML)); // no time passes
+      first.unmount();
+
+      expect(updateBranch).toHaveBeenCalledTimes(1);
+      expect(updateBranch).toHaveBeenCalledWith(1, expect.objectContaining({ content: DRAFT_HTML }));
+    });
+
+    it('clears the local draft once the server confirms', async () => {
+      mountEditor();
+
+      act(() => fake.type(DRAFT_HTML));
+      await advance(SERVER_SAVE_DELAY_MS + 100);
+
+      expect(updateBranch).toHaveBeenCalledTimes(1);
+      expect(Object.keys(localStorage)).toHaveLength(0);
+    });
+
+    it('keeps the local draft and shows an error when the server save fails', async () => {
+      updateBranch.mockResolvedValue(null);
+      mountEditor();
+
+      act(() => fake.type(DRAFT_HTML));
+      await advance(SERVER_SAVE_DELAY_MS + 100);
+
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      const stored = Object.keys(localStorage).map((key) => localStorage.getItem(key));
+      expect(stored.some((value) => value.includes('Half-written thought'))).toBe(true);
+    });
+
+    it('keeps text typed while a save is still in flight', async () => {
+      let confirmSave;
+      updateBranch.mockReturnValue(new Promise((resolve) => { confirmSave = resolve; }));
+      mountEditor();
+
+      act(() => fake.type('<p>first</p>'));
+      await advance(SERVER_SAVE_DELAY_MS + 100); // save is now waiting on the server
+
+      act(() => fake.type('<p>second</p>'));
+      await advance(1000);
+      await act(async () => confirmSave({ id: 7 }));
+
+      const stored = Object.keys(localStorage).map((key) => localStorage.getItem(key));
+      expect(stored.some((value) => value.includes('second'))).toBe(true);
+    });
+
+    it('does not auto-save a new, unsaved branch to the server', async () => {
+      useUiStore.setState({ isUpdate: false, oldBranch: null });
+      mountEditor();
+
+      act(() => fake.type(DRAFT_HTML));
+      await advance(SERVER_SAVE_DELAY_MS * 2);
+
+      expect(updateBranch).not.toHaveBeenCalled();
+      expect(useBranchStore.getState().addBranch).not.toHaveBeenCalled();
+    });
+
+    it('stays quiet when the title is too short to save', async () => {
+      Object.defineProperty(titleEl, 'innerText', { value: 'Hi', configurable: true });
+      mountEditor();
+
+      act(() => fake.type(DRAFT_HTML));
+      await advance(SERVER_SAVE_DELAY_MS + 100);
+
+      expect(updateBranch).not.toHaveBeenCalled();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+  });
 });
