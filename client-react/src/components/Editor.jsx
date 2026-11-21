@@ -184,8 +184,11 @@ function Editor() {
       $editor.on('tbwchange', () => {
         if (loadingContentRef.current || savingRef.current) return;
 
-        setStatus(IDLE_STATUS);
         const html = $editor.trumbowyg('html');
+        // Closing the editor resets it to the empty template, which fires this event too
+        if (html === DEFAULT_CONTENT) return;
+
+        setStatus(IDLE_STATUS);
         pendingDraftRef.current = { key: draftKeyRef.current, html };
         clearTimeout(draftTimerRef.current);
         draftTimerRef.current = setTimeout(() => {

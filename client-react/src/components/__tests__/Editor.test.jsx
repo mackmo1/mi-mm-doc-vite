@@ -356,6 +356,35 @@ describe('Editor local auto-save', () => {
       expect(stored.some((value) => value.includes('second'))).toBe(true);
     });
 
+    // Closing the editor makes the app reset it to this empty template, which Trumbowyg
+    // reports as a change event just like a user edit would be
+    const EMPTY_TEMPLATE = '<h1 class="branch-name" id="branch-name"></h1>';
+
+    it('still sends the text typed just before the editor is closed', () => {
+      const first = mountEditor();
+
+      act(() => fake.type(DRAFT_HTML));
+      act(() => fake.type(EMPTY_TEMPLATE)); // the reset that closing the editor triggers
+      first.unmount();
+
+      expect(updateBranch).toHaveBeenCalledTimes(1);
+      expect(updateBranch).toHaveBeenCalledWith(1, expect.objectContaining({ content: DRAFT_HTML }));
+    });
+
+    it('does not replace the local draft with a blank one when the editor is closed', async () => {
+      updateBranch.mockReturnValue(new Promise(() => {})); // server never answers
+      const first = mountEditor();
+
+      act(() => fake.type(DRAFT_HTML));
+      await advance(1000); // the draft is stored, the server save has not fired yet
+      act(() => fake.type(EMPTY_TEMPLATE));
+      first.unmount();
+
+      const stored = Object.keys(localStorage).map((key) => localStorage.getItem(key));
+      expect(stored.some((value) => value.includes('Half-written thought'))).toBe(true);
+      expect(stored).not.toContain(EMPTY_TEMPLATE);
+    });
+
     it('does not auto-save a new, unsaved branch to the server', async () => {
       useUiStore.setState({ isUpdate: false, oldBranch: null });
       mountEditor();
